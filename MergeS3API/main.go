@@ -7,6 +7,10 @@ import (
 	"io/ioutil"
 	"time"
 
+	"errors"
+
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -44,9 +48,9 @@ func getObject(filename string) map[string]interface{} {
 	return data
 }
 
-func mergeFilesByDate(date string) {
+func mergeFilesByDate(date string) string {
 
-	// var FILE_TO_SEARCH = fmt.Sprintf("%v/%v", BUCKET_FOLDER_NAME, date)
+	var FILE_TO_SEARCH = fmt.Sprintf("%v/%v", BUCKET_FOLDER_NAME_FOR_READ, date)
 
 	s3session := s3.New(session.Must(session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),
@@ -55,8 +59,8 @@ func mergeFilesByDate(date string) {
 
 	resp, err2 := s3session.ListObjectsV2(&s3.ListObjectsV2Input{
 		Bucket: aws.String(BUCKET_NAME_FOR_READ),
-		// Prefix: aws.String(FILE_TO_SEARCH),
-		Prefix: aws.String(BUCKET_FOLDER_NAME_FOR_READ),
+		Prefix: aws.String(FILE_TO_SEARCH),
+		// Prefix: aws.String(BUCKET_FOLDER_NAME_FOR_READ),
 	})
 
 	if err2 != nil {
@@ -101,8 +105,10 @@ func mergeFilesByDate(date string) {
 		fmt.Printf("There was an issue uploading to s3: %s", ierr.Error())
 
 	}
+	return key
 
 }
+
 func getFormattedTime() string {
 	currentTime := time.Now()
 	year := currentTime.Year()
@@ -123,15 +129,33 @@ func getFormattedTime() string {
 
 	}
 	var time string = fmt.Sprintf("%d-%s-%s-%d-%d", year, monthstr, daystr, hour, min)
-	// var m int = int(month)
 
 	return time
 }
 
+func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	fmt.Println("printng", request.Body)
+
+	if request.HTTPMethod != "POST" {
+		errName := errors.New("Method not allowed")
+		ApiResponse := events.APIGatewayProxyResponse{StatusCode: 403}
+		return ApiResponse, errName
+	}
+
+	var date string = request.Body
+	if len(date) != 10 {
+		errName := errors.New("Please Provide a valid Date in FORMAT: dd-mm-yyyy")
+		ApiResponse := events.APIGatewayProxyResponse{StatusCode: 403}
+		return ApiResponse, errName
+	}
+	var pathtos3 string = mergeFilesByDate(date)
+	var stringReponse string = fmt.Sprintf("Files merged to S3 success, BucketName: %s, path: %s ", BUCKET_NAME_FOR_WRITE, pathtos3)
+	ApiResponse := events.APIGatewayProxyResponse{Body: stringReponse, StatusCode: 200}
+	return ApiResponse, nil
+
+}
 func main() {
-	date := "27-07-1801"
 
-	mergeFilesByDate(date)
+	lambda.Start(Handler)
 
-	fmt.Println("PROGRAM FINISHED SUCCESSFULL---------------------------")
 }
