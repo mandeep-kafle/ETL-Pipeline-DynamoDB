@@ -38,6 +38,7 @@ type record struct {
 
 const TOTAL_ITEMS int = 10000
 const BUFFER_SIZE int = 20
+const ITEMS_SIZE_FOR_EACH_THREAD = 1000
 
 func main() {
 	lambda.Start(Handler)
@@ -46,13 +47,25 @@ func main() {
 
 func Handler() {
 
-	for i := 0; i < TOTAL_ITEMS/BUFFER_SIZE; i++ {
-		Pagination(i)
-	}
+	go Update1000(0)
+	go Update1000(1)
+	go Update1000(2)
+	go Update1000(3)
+	go Update1000(4)
+	go Update1000(5)
+	go Update1000(6)
+	go Update1000(7)
+	go Update1000(8)
+	Update1000(9)
 	fmt.Println("PROGRAM FINSIHED SUCCESFULLY___________________________________________________________________________________________")
 }
 
-func Pagination(count int) {
+func Update1000(Threadno int) {
+	for i := 0; i < ITEMS_SIZE_FOR_EACH_THREAD/BUFFER_SIZE; i++ {
+		Pagination(i, Threadno)
+	}
+}
+func Pagination(count int, Threadno int) {
 
 	randomIdAndDate := make([]DateId, 20, 20)
 	for i := 0; i < BUFFER_SIZE; i++ {
@@ -60,38 +73,41 @@ func Pagination(count int) {
 		randomIdAndDate[i].Id = fmt.Sprintf("%d", rand.Intn(61000)+1)
 
 	}
-	setData(randomIdAndDate)
+	setData(randomIdAndDate, Threadno)
 
 }
 
 func getRandomDate(count int) string {
 	rand.Seed(time.Now().UnixNano() + int64(count))
-	min := 2004
+	min := 1900
 	max := 2021
 
 	year := rand.Intn(max-min+1) + 1900
 	month := rand.Intn(12) + 1
 	day := rand.Intn(27) + 1
-	if day < 9 {
-		str := fmt.Sprintf("0%d/%d/%02d", day, month, year)
-		return str
+	var str string
+	var daystr string = fmt.Sprintf("%d", day)
+	var monthstr string = fmt.Sprintf("%d", month)
+	if day < 10 {
+		daystr = fmt.Sprintf("0%d", day)
+
 	}
 
-	if month < 9 {
-		str := fmt.Sprintf("%d/0%d/%02d", day, month, year)
-		return str
-	}
-	str := fmt.Sprintf("%d/%d/%02d", day, month, year)
+	if month < 10 {
+		monthstr = fmt.Sprintf("0%d", month)
 
+	}
+
+	str = fmt.Sprintf("%v/%v/%02d", daystr, monthstr, year)
+	// fmt.Println(str)
 	return str
 }
 
-//------------------------------------------------- setData fetches the data with id in batch of 20-----------------------------------------
-func setData(randomIdAndDate []DateId) {
+func setData(randomIdAndDate []DateId, Threadno int) {
 
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),
-		Credentials: credentials.NewStaticCredentials(" ", "  ", ""),
+		Credentials: credentials.NewStaticCredentials("", "", ""),
 	})
 
 	if err != nil {
@@ -225,18 +241,17 @@ func setData(randomIdAndDate []DateId) {
 		}
 
 	}
+	fmt.Println("BATCH OF 20 READ SUCESSFUL FOR THEREAD: ", Threadno)
+	WriteInDB(cur, randomIdAndDate, Threadno)
 
-	WriteInDB(cur, randomIdAndDate)
-	fmt.Println("BATCH OF 20 READ SUCESSFUL")
 }
 
-//-------------------------Writes into DB into batch of 20 ---------------------------------------------------------------------
-// --------FUNC IS TOO LONG DUE TO FORMATING OF BATCH WRITE -----------------------
-func WriteInDB(allData []record, randomIdAndDate []DateId) {
+//-----------------------------------------------------------------------------------------------------------
+func WriteInDB(allData []record, randomIdAndDate []DateId, Threadno int) {
 
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),
-		Credentials: credentials.NewStaticCredentials(" ", "  ", ""),
+		Credentials: credentials.NewStaticCredentials("", "", ""),
 	})
 
 	if err != nil {
@@ -1158,7 +1173,7 @@ func WriteInDB(allData []record, randomIdAndDate []DateId) {
 		fmt.Println("Got error calling BatchWrite: ", err)
 		return
 	}
-	fmt.Println("BATCH OF 20 WRITE SUCCESFULL")
+	fmt.Println("BATCH OF 20 WRITE SUCCESFULL FOR THREAD NO", Threadno)
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------

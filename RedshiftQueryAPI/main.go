@@ -4,15 +4,17 @@ import (
 	"fmt"
 	"time"
 
+	"encoding/json"
+
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/redshiftdataapiservice"
 	"github.com/aws/aws-sdk-go/service/redshiftdataapiservice/redshiftdataapiserviceiface"
-	"github.com/cevaris/ordered_map"
 )
 
-// Declare redshiftclient client
 var redshiftclient redshiftdataapiserviceiface.RedshiftDataAPIServiceAPI
 
 type Redshift_Event struct {
@@ -24,7 +26,11 @@ type Redshift_Event struct {
 }
 
 func main() {
-	// Create session
+
+	lambda.Start(Handler)
+}
+
+func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),
@@ -32,19 +38,12 @@ func main() {
 	})
 	if err != nil {
 		fmt.Println(err)
-		return
+		stringResp := "Cannot create sess With Redshift"
+		ApiResponse := events.APIGatewayProxyResponse{Body: stringResp, StatusCode: 500}
+		return ApiResponse, err
 	}
 
 	redshiftclient = redshiftdataapiservice.New(sess)
-
-	Handler()
-}
-
-func Handler() (string, error) {
-	fmt.Println("Inside Go Handler function!")
-
-	final_resp := ""
-	responses := ordered_map.NewOrderedMap()
 
 	redshift_cluster_id := "borderfree"
 
@@ -67,33 +66,16 @@ func Handler() (string, error) {
 	}
 	fmt.Println("Run-Type Mode ", run_type)
 
-	// Initiate OrderedMap key value pair for query and its type
-	sql_statements := ordered_map.NewOrderedMap()
+	command := request.HTTPMethod
+	sql_statement := request.Body
 
-	sql_statements.Set("SELECT", "SELECT * FROM borders3dataschema.dbstreamborderfree;")
+	FinalResp := execute_sql_data_api(redshift_database, command, sql_statement, redshift_user, redshift_cluster_id, isSynchronous)
 
-	fmt.Println("Running sql queries in ", run_type, " mode!")
+	fmt.Println(FinalResp)
 
-	// Iterating over ordered map to execute each sql statement
-	iter := sql_statements.IterFunc()
-	for kv, ok := iter(); ok; kv, ok = iter() {
-		command := kv.Key.(string)
-		query := kv.Value.(string)
-		fmt.Println("Example of ", command, ":")
-		fmt.Println("Running Query ", query)
-		responses.Set(command, execute_sql_data_api(redshift_database, command, query, redshift_user, redshift_cluster_id, isSynchronous))
-	}
+	ApiResponse := events.APIGatewayProxyResponse{Body: FinalResp, StatusCode: 200}
+	return ApiResponse, err
 
-	// returning resultset in execution ordered fashion
-	iter1 := responses.IterFunc()
-	for kv, ok := iter1(); ok; kv, ok = iter1() {
-		command := kv.Key.(string)
-		status := kv.Value.(string)
-		final_resp += command + ":" + status + " | "
-	}
-
-	fmt.Println(final_resp)
-	return final_resp, nil
 }
 
 func execute_sql_data_api(redshift_database string, command string, query string, redshift_user string, redshift_cluster_id string, isSynchronous bool) string {
@@ -102,7 +84,6 @@ func execute_sql_data_api(redshift_database string, command string, query string
 	var query_status = ""
 	done := false
 
-	// Calling Redshift Data API with executeStatement()
 	execstmt_req, execstmt_err := redshiftclient.ExecuteStatement(&redshiftdataapiservice.ExecuteStatementInput{
 		ClusterIdentifier: aws.String(redshift_cluster_id),
 		DbUser:            aws.String(redshift_user),
@@ -125,6 +106,7 @@ func execute_sql_data_api(redshift_database string, command string, query string
 		fmt.Println(descstmt_err)
 	}
 
+	var successResp string
 	for done == false && isSynchronous && attempts < max_wait_cycles {
 		attempts += 1
 		time.Sleep(1 * time.Second)
@@ -149,8 +131,9 @@ func execute_sql_data_api(redshift_database string, command string, query string
 
 					fmt.Println(getresult_err)
 				}
+				// fmt.Printf("%T", getresult_req.Records)
 
-				fmt.Println(getresult_req.Records)
+				successResp = parsequeryresponse(getresult_req.Records)
 			}
 		} else {
 			fmt.Println("Currently working... query status: ", query_status, " .... for query--> ", query)
@@ -168,6 +151,40 @@ func execute_sql_data_api(redshift_database string, command string, query string
 
 		fmt.Println("Limit for max_wait_cycles has been reached before the query was able to finish. We have exited out of the while-loop. You may increase the limit accordingly.")
 	}
-	fmt.Println(query_status)
-	return query_status
+	//fmt.Println(query_status)
+	return successResp
+}
+
+type record struct {
+	Id                      string
+	DateRep                 string
+	CountriesAndTerritories string
+	GeoId                   string
+	Operation               string
+}
+
+func parsequeryresponse(res [][]*redshiftdataapiservice.Field) string {
+
+	var arr []record
+	for i := 0; i < len(res); i++ {
+
+		var temp record
+
+		temp.Id = *res[i][3].StringValue
+		temp.DateRep = *res[i][1].StringValue
+		temp.CountriesAndTerritories = *res[i][0].StringValue
+		temp.GeoId = *res[i][2].StringValue
+		temp.Operation = *res[i][4].StringValue
+
+		arr = append(arr, temp)
+	}
+
+	resJson, err := json.Marshal(arr)
+	if err != nil {
+		fmt.Println("Cannot encode to JSON ", err)
+	}
+	// fmt.Printf("%T", resJson)
+
+	// fmt.Fprintf(os.Stdout, "%s", resJson)
+	return string(resJson)
 }
