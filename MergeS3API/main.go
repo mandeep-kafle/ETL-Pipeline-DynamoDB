@@ -24,30 +24,34 @@ const BUCKET_FOLDER_NAME_FOR_READ string = "dbstream"
 const BUCKET_NAME_FOR_WRITE string = "mergefilesbucket"
 const BUCKET_FOLDER_NAME_FOR_WRITE string = "merged"
 
-func getObject(filename string) map[string]interface{} {
+func main() {
 
-	s3session := s3.New(session.Must(session.NewSession(&aws.Config{
-		Region:      aws.String("us-east-1"),
-		Credentials: credentials.NewStaticCredentials("", "", ""),
-	})))
-
-	resp, err := s3session.GetObject(&s3.GetObjectInput{
-		Bucket: aws.String(BUCKET_NAME_FOR_READ),
-		Key:    aws.String(filename),
-	})
-
-	if err != nil {
-		panic(err)
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-
-	data := make(map[string]interface{}, 0)
-	json.Unmarshal([]byte(body), &data)
-
-	return data
+	lambda.Start(Handler)
+	// Handler()
 }
 
+// request events.APIGatewayProxyRequest
+func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	fmt.Println("printng", request.Body)
+
+	if request.HTTPMethod != "POST" {
+		errName := errors.New("Method not allowed")
+		ApiResponse := events.APIGatewayProxyResponse{StatusCode: 403}
+		return ApiResponse, errName
+	}
+
+	var date string = request.Body
+	if len(date) != 10 {
+		errName := errors.New("Please Provide a valid Date in FORMAT: dd-mm-yyyy")
+		ApiResponse := events.APIGatewayProxyResponse{StatusCode: 403}
+		return ApiResponse, errName
+	}
+	var pathtos3 string = mergeFilesByDate(date)
+	var stringReponse string = fmt.Sprintf("Files merged to S3 success, BucketName: %s, path: %s ", BUCKET_NAME_FOR_WRITE, pathtos3)
+	ApiResponse := events.APIGatewayProxyResponse{Body: stringReponse, StatusCode: 200}
+	return ApiResponse, nil
+
+}
 func mergeFilesByDate(date string) string {
 
 	var FILE_TO_SEARCH = fmt.Sprintf("%v/%v", BUCKET_FOLDER_NAME_FOR_READ, date)
@@ -109,6 +113,30 @@ func mergeFilesByDate(date string) string {
 
 }
 
+func getObject(filename string) map[string]interface{} {
+
+	s3session := s3.New(session.Must(session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Credentials: credentials.NewStaticCredentials("", "", ""),
+	})))
+
+	resp, err := s3session.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(BUCKET_NAME_FOR_READ),
+		Key:    aws.String(filename),
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+
+	data := make(map[string]interface{}, 0)
+	json.Unmarshal([]byte(body), &data)
+
+	return data
+}
+
 func getFormattedTime() string {
 	currentTime := time.Now()
 	year := currentTime.Year()
@@ -131,31 +159,4 @@ func getFormattedTime() string {
 	var time string = fmt.Sprintf("%d-%s-%s-%d-%d", year, monthstr, daystr, hour, min)
 
 	return time
-}
-
-func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	fmt.Println("printng", request.Body)
-
-	if request.HTTPMethod != "POST" {
-		errName := errors.New("Method not allowed")
-		ApiResponse := events.APIGatewayProxyResponse{StatusCode: 403}
-		return ApiResponse, errName
-	}
-
-	var date string = request.Body
-	if len(date) != 10 {
-		errName := errors.New("Please Provide a valid Date in FORMAT: dd-mm-yyyy")
-		ApiResponse := events.APIGatewayProxyResponse{StatusCode: 403}
-		return ApiResponse, errName
-	}
-	var pathtos3 string = mergeFilesByDate(date)
-	var stringReponse string = fmt.Sprintf("Files merged to S3 success, BucketName: %s, path: %s ", BUCKET_NAME_FOR_WRITE, pathtos3)
-	ApiResponse := events.APIGatewayProxyResponse{Body: stringReponse, StatusCode: 200}
-	return ApiResponse, nil
-
-}
-func main() {
-
-	lambda.Start(Handler)
-
 }

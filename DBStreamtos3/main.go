@@ -27,10 +27,10 @@ type data struct {
 }
 
 func main() {
-	lambda.Start(handleRequest)
+	lambda.Start(Handler)
 }
 
-func handleRequest(ctx context.Context, e events.DynamoDBEvent) {
+func Handler(ctx context.Context, e events.DynamoDBEvent) {
 
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),

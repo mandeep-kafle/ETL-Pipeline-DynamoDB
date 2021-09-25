@@ -1,13 +1,15 @@
 package main
 
 import (
-	"fmt"
-	"time"
-
 	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -28,10 +30,23 @@ type Redshift_Event struct {
 func main() {
 
 	lambda.Start(Handler)
+	// Handler()
 }
 
+// request events.APIGatewayProxyRequest
 func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
+	if strings.Contains(request.Body, "*") == false {
+		errName := errors.New("Only Select * queries allowed")
+		ApiResponse := events.APIGatewayProxyResponse{StatusCode: 403}
+		return ApiResponse, errName
+	}
+	if request.HTTPMethod != "POST" {
+
+		errName := errors.New("HTTP Method not allowed")
+		ApiResponse := events.APIGatewayProxyResponse{StatusCode: 403}
+		return ApiResponse, errName
+	}
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),
 		Credentials: credentials.NewStaticCredentials("", "", ""),
@@ -69,9 +84,10 @@ func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	command := request.HTTPMethod
 	sql_statement := request.Body
 
-	FinalResp := execute_sql_data_api(redshift_database, command, sql_statement, redshift_user, redshift_cluster_id, isSynchronous)
+	// command := "POST"
+	// sql_statement := "select * from covids3data1.golangborderfree11;"
 
-	fmt.Println(FinalResp)
+	FinalResp := execute_sql_data_api(redshift_database, command, sql_statement, redshift_user, redshift_cluster_id, isSynchronous)
 
 	ApiResponse := events.APIGatewayProxyResponse{Body: FinalResp, StatusCode: 200}
 	return ApiResponse, err
@@ -156,16 +172,16 @@ func execute_sql_data_api(redshift_database string, command string, query string
 }
 
 type record struct {
-	Id                      string
-	DateRep                 string
-	CountriesAndTerritories string
-	GeoId                   string
-	Operation               string
+	Id                      string `json:"id"`
+	DateRep                 string `json:"dateRep"`
+	CountriesAndTerritories string `json:"countriesAndTerritories"`
+	GeoId                   string `json:"geoId"`
+	Operation               string `json:"operation"`
 }
 
 func parsequeryresponse(res [][]*redshiftdataapiservice.Field) string {
 
-	var arr []record
+	arr := make([]interface{}, 0)
 	for i := 0; i < len(res); i++ {
 
 		var temp record
@@ -175,7 +191,6 @@ func parsequeryresponse(res [][]*redshiftdataapiservice.Field) string {
 		temp.CountriesAndTerritories = *res[i][0].StringValue
 		temp.GeoId = *res[i][2].StringValue
 		temp.Operation = *res[i][4].StringValue
-
 		arr = append(arr, temp)
 	}
 
@@ -183,8 +198,7 @@ func parsequeryresponse(res [][]*redshiftdataapiservice.Field) string {
 	if err != nil {
 		fmt.Println("Cannot encode to JSON ", err)
 	}
-	// fmt.Printf("%T", resJson)
 
-	// fmt.Fprintf(os.Stdout, "%s", resJson)
+	fmt.Println(string(resJson))
 	return string(resJson)
 }
