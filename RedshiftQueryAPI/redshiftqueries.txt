@@ -1,0 +1,27 @@
+
+
+create external schema spectrums3
+from data catalog
+database 'dev'
+iam_role 'arn:aws:iam::870682640383:role/Redshiftqueryons3usinglambda';
+
+
+create external table spectrums3.borderfreeGO(
+  CountriesAndTerritories nvarchar(100),
+  DateRep nvarchar(100),
+  GeoId nvarchar(100),
+  Id nvarchar(100),
+  Operation nvarchar(100)
+)
+ROW FORMAT SERDE 
+  'org.openx.data.jsonserde.JsonSerDe' 
+  WITH SERDEPROPERTIES ( 
+  'ignore.malformed.json' = 'true',
+  'paths'='CountriesAndTerritories,DateRep,GeoId,Operation') 
+STORED AS INPUTFORMAT 
+  'org.apache.hadoop.mapred.TextInputFormat' 
+OUTPUTFORMAT 
+  'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat'
+   location 's3://borderdynamodbstream/dbstream';
+
+select * from spectrums3.borderfreeGO;
