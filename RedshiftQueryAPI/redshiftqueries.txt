@@ -3,7 +3,7 @@
 create external schema spectrums3
 from data catalog
 database 'dev'
-iam_role 'arn:aws:iam::870682640383:role/Redshiftqueryons3usinglambda';
+iam_role '';
 
 
 create external table spectrums3.borderfreeGO(

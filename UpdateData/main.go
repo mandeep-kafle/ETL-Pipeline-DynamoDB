@@ -7,7 +7,6 @@ import (
 
 	"strconv"
 
-	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -36,40 +35,39 @@ type record struct {
 	Cumulative_number_for_14_days_of_COVID_19_cases_per_100000 string
 }
 
+const SecretKey = ""
+const AccessKey = ""
 const TOTAL_ITEMS int = 10000
 const BUFFER_SIZE int = 20
-const ITEMS_SIZE_FOR_EACH_THREAD = 1000
+const ITEMS_SIZE_FOR_EACH_THREAD = 500
+
+var countUpdated int = 0
 
 func main() {
-	lambda.Start(Handler)
-	// Handler()
+	// lambda.Start(Handler)
+	Handler()
+
 }
 
 func Handler() {
 
-	go Update1000(0)
-	go Update1000(1)
-	go Update1000(2)
-	go Update1000(3)
-	go Update1000(4)
-	go Update1000(5)
-	go Update1000(6)
-	go Update1000(7)
-	go Update1000(8)
-	Update1000(9)
+	for ThreadNo := 0; ThreadNo < 20; ThreadNo++ {
+		go Update(ThreadNo)
+	}
+	time.Sleep(59 * time.Second)
 	fmt.Println("PROGRAM FINSIHED SUCCESFULLY___________________________________________________________________________________________")
 }
 
-func Update1000(Threadno int) {
+func Update(Threadno int) {
 	for i := 0; i < ITEMS_SIZE_FOR_EACH_THREAD/BUFFER_SIZE; i++ {
-		Pagination(i, Threadno)
+		Pagination(Threadno)
 	}
 }
-func Pagination(count int, Threadno int) {
+func Pagination(Threadno int) {
 
 	randomIdAndDate := make([]DateId, 20, 20)
 	for i := 0; i < BUFFER_SIZE; i++ {
-		randomIdAndDate[i].Date = getRandomDate(i + count)
+		randomIdAndDate[i].Date = getRandomDate(i + Threadno)
 		randomIdAndDate[i].Id = fmt.Sprintf("%d", rand.Intn(61000)+1)
 
 	}
@@ -105,11 +103,13 @@ func getRandomDate(count int) string {
 
 func setData(randomIdAndDate []DateId, Threadno int) {
 
+	if countUpdated > TOTAL_ITEMS {
+		return
+	}
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),
-		Credentials: credentials.NewStaticCredentials("", "", ""),
+		Credentials: credentials.NewStaticCredentials(AccessKey, SecretKey, ""),
 	})
-
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -241,23 +241,23 @@ func setData(randomIdAndDate []DateId, Threadno int) {
 		}
 
 	}
-	fmt.Println("BATCH OF 20 READ SUCESSFUL FOR THEREAD: ", Threadno)
+	// fmt.Println("BATCH OF 20 READ SUCESSFUL FOR THEREAD: ", Threadno)
 	WriteInDB(cur, randomIdAndDate, Threadno)
 
 }
 
 //-----------------------------------------------------------------------------------------------------------
 func WriteInDB(allData []record, randomIdAndDate []DateId, Threadno int) {
-
+	if countUpdated > TOTAL_ITEMS {
+		return
+	}
 	sess, err := session.NewSession(&aws.Config{
 		Region:      aws.String("us-east-1"),
-		Credentials: credentials.NewStaticCredentials("", "", ""),
+		Credentials: credentials.NewStaticCredentials(AccessKey, SecretKey, ""),
 	})
-
 	if err != nil {
 		fmt.Println(err)
 	}
-
 	svc := dynamodb.New(sess)
 
 	prams := &dynamodb.BatchWriteItemInput{
@@ -1173,7 +1173,9 @@ func WriteInDB(allData []record, randomIdAndDate []DateId, Threadno int) {
 		fmt.Println("Got error calling BatchWrite: ", err)
 		return
 	}
-	fmt.Println("BATCH OF 20 WRITE SUCCESFULL FOR THREAD NO", Threadno)
+	// fmt.Println("BATCH OF 20 WRITE SUCCESFULL FOR THREAD NO", Threadno)
+	countUpdated += 20
+	fmt.Println("Current completed items ", countUpdated, "Printed by ThreadNO", Threadno)
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------
